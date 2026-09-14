@@ -1,0 +1,10 @@
+# 敏感配置与本地产物
+.env
+*.db
+*.sqlite3
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+dist/
+.reports/

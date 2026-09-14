@@ -1,0 +1,15 @@
+services:
+  petsight:
+    build: ./backend
+    image: petsight:latest
+    container_name: petsight
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - petsight-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  petsight-data:

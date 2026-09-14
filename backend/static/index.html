@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PetSight - 宠物视觉建档助手</title>
+<style>
+  :root {
+    --accent: #2563eb; --green: #16a34a; --red: #dc2626; --orange: #ea580c;
+    --bg: #f1f5f9; --card: #fff; --text: #1f2937; --muted: #6b7280;
+    --border: #e2e8f0; --radius: 10px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--text); min-height:100vh; padding:20px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { text-align:center; color:var(--accent); font-size:22px; margin:12px 0 8px; }
+  .subtitle { text-align:center; color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .card { background:var(--card); border-radius:var(--radius); padding:20px 24px; box-shadow:0 1px 4px rgba(0,0,0,.06); margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:14px; color:var(--accent); }
+  .upload-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .upload-row input[type="file"] { flex:1; min-width:180px; }
+  .upload-row input[type="text"] { flex:1; min-width:140px; padding:9px 12px; border:1px solid var(--border); border-radius:6px; font-size:14px; }
+  .btn { background:var(--accent); color:#fff; border:0; border-radius:7px; padding:9px 18px; cursor:pointer; font-size:14px; font-weight:600; transition:background .15s; white-space:nowrap; }
+  .btn:hover { background:#1d4ed8; }
+  .btn:disabled { background:#9ca3af; cursor:not-allowed; }
+  .btn-sm { padding:5px 12px; font-size:12px; border-radius:5px; }
+  .btn-outline { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+  .btn-outline:hover { background:#eff6ff; }
+  .btn-danger { background:var(--red); }
+  .btn-danger:hover { background:#b91c1c; }
+  .preview-box { margin-top:12px; text-align:center; }
+  .preview-box img { max-width:260px; max-height:260px; border-radius:8px; border:1px solid var(--border); object-fit:cover; display:none; }
+  .result-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; margin-top:14px; }
+  .result-grid .field { display:flex; flex-direction:column; }
+  .result-grid .field.full { grid-column:1/-1; }
+  .result-grid label { font-weight:600; font-size:12px; color:var(--muted); margin-bottom:2px; }
+  .result-grid .val { font-size:14px; }
+  .confidence-bar { height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; margin-top:4px; }
+  .confidence-bar span { display:block; height:100%; background:var(--green); border-radius:4px; transition:width .3s; }
+  .mode-badge { display:inline-block; font-size:11px; padding:2px 8px; border-radius:12px; margin-bottom:10px; }
+  .mode-badge.vlm { background:#dcfce7; color:#15803d; }
+  .mode-badge.fallback { background:#fef3c7; color:#92400e; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { background:#f8fafc; padding:10px 8px; text-align:left; font-weight:600; border-bottom:2px solid var(--border); }
+  td { padding:8px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  tr:hover td { background:#fafbff; }
+  .td-actions { display:flex; gap:4px; }
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; justify-content:center; align-items:center; padding:20px; }
+  .modal-overlay.show { display:flex; }
+  .modal { background:#fff; border-radius:12px; max-width:560px; width:100%; max-height:85vh; overflow-y:auto; padding:28px; box-shadow:0 8px 30px rgba(0,0,0,.18); }
+  .modal h3 { margin-bottom:16px; color:var(--accent); }
+  .modal .close { float:right; background:none; border:0; font-size:22px; cursor:pointer; color:var(--muted); }
+  .modal img { max-width:100%; max-height:280px; border-radius:8px; margin:12px 0; display:block; }
+  .toast { position:fixed; top:20px; right:20px; background:#1f2937; color:#fff; padding:10px 20px; border-radius:8px; font-size:13px; z-index:200; opacity:0; transform:translateY(-12px); transition:all .25s; }
+  .toast.show { opacity:1; transform:translateY(0); }
+  .empty-state { text-align:center; color:var(--muted); padding:28px 0; font-size:14px; }
+  @media (max-width:600px) {
+    .result-grid { grid-template-columns:1fr; }
+    .upload-row { flex-direction:column; }
+    .upload-row input[type="file"], .upload-row input[type="text"] { width:100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>PetSight - 宠物视觉建档助手</h1>
+  <p class="subtitle">上传宠物照片 - AI 识别品种/体型/健康状态 - 沉淀为可检索的健康档案</p>
+  <div class="card">
+    <h2>上传识别</h2>
+    <div class="upload-row">
+      <input type="file" id="fileInput" accept="image/*,.jpg,.jpeg,.png,.webp">
+      <input type="text" id="nameInput" placeholder="宠物昵称（可选）">
+      <button class="btn" id="goBtn">上传并识别</button>
+    </div>
+    <div class="preview-box"><img id="preview" alt="预览"></div>
+  </div>
+  <div class="card" id="resultCard" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
+      <h2 style="margin-bottom:0;">识别结果</h2>
+      <span id="modeBadge" class="mode-badge"></span>
+    </div>
+    <div class="result-grid">
+      <div class="field"><label>物种 / 品种</label><span class="val" id="rSpecies"></span></div>
+      <div class="field"><label>置信度</label><span class="val" id="rConfText"></span><div class="confidence-bar"><span id="rConfBar"></span></div></div>
+      <div class="field"><label>体型判断</label><span class="val" id="rBody"></span></div>
+      <div class="field"><label>毛发状态</label><span class="val" id="rCoat"></span></div>
+      <div class="field full"><label>健康建议</label><span class="val" id="rNotes"></span></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn" id="saveBtn">保存为健康档案</button>
+      <button class="btn btn-outline" id="reScanBtn">重新识别</button>
+    </div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <h2 style="margin-bottom:0;">健康档案列表</h2>
+      <button class="btn btn-sm btn-outline" id="exportBtn">导出 JSON</button>
+    </div>
+    <div id="listContainer">
+      <table id="petTable" style="display:none;"><thead><tr><th>ID</th><th>昵称</th><th>物种/品种</th><th>体型</th><th>模式</th><th>时间</th><th>操作</th></tr></thead><tbody></tbody></table>
+      <div class="empty-state" id="emptyState">暂无档案，上传一张宠物照片开始吧</div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <button class="close" onclick="closeModal()">X</button>
+    <h3 id="modalTitle"></h3>
+    <img id="modalImg" style="display:none;" alt="宠物照片">
+    <div id="modalBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+let lastResult = null;
+$("fileInput").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  $("preview").src = URL.createObjectURL(f);
+  $("preview").style.display = "block";
+  $("resultCard").style.display = "none";
+  lastResult = null;
+});
+$("goBtn").addEventListener("click", async () => {
+  const f = $("fileInput").files[0];
+  if (!f) { toast("请先选一张宠物照片"); return; }
+  $("goBtn").disabled = true; $("goBtn").textContent = "识别中...";
+  try {
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("name", $("nameInput").value.trim() || "未命名");
+    const res = await fetch("/api/vision/classify", { method:"POST", body:fd });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || res.statusText); }
+    lastResult = await res.json();
+    renderResult(lastResult);
+  } catch (e) { toast("识别失败：" + e.message); }
+  finally { $("goBtn").disabled = false; $("goBtn").textContent = "上传并识别"; }
+});
+function renderResult(r) {
+  $("resultCard").style.display = "block";
+  const isFallback = r._mode === "local_fallback" || r._mode === "vlm_error";
+  $("modeBadge").textContent = isFallback ? "降级模式" : "AI 识别";
+  $("modeBadge").className = "mode-badge " + (isFallback ? "fallback" : "vlm");
+  $("rSpecies").textContent = (r.species||"未知") + " / " + (r.breed||"未知");
+  $("rBody").textContent = r.body_condition || "——";
+  $("rCoat").textContent = r.coat_condition || "——";
+  const conf = Math.round(Math.min(1, Math.max(0, r.confidence || 0)) * 100);
+  $("rConfText").textContent = conf + "%";
+  $("rConfBar").style.width = conf + "%";
+  const notes = typeof r.health_notes === "string" ? r.health_notes.split(/[,，]/).filter(Boolean) : (Array.isArray(r.health_notes) ? r.health_notes : []);
+  $("rNotes").innerHTML = notes.length ? notes.map(n => "• " + n.trim()).join("<br>") : "——";
+}
+// 将图片压缩为小尺寸缩略图（dataURL），避免超长 base64 导致保存失败 / 数据库膨胀
+function downscaleImage(file, maxSide) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const scale = Math.min(1, maxSide / Math.max(w, h));
+        w = Math.round(w * scale); h = Math.round(h * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        let out = canvas.toDataURL("image/jpeg", 0.75);
+        if (out.length > 800000) { out = canvas.toDataURL("image/jpeg", 0.4); }
+        resolve(out);
+      };
+      img.onerror = () => reject(new Error("图片解码失败"));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error("读取文件失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+$("saveBtn").addEventListener("click", async () => {
+  if (!lastResult) { toast("没有可保存的识别结果"); return; }
+  const notesRaw = lastResult.health_notes || "";
+  const notesStr = typeof notesRaw === "string" ? notesRaw : (Array.isArray(notesRaw) ? notesRaw.join("，") : String(notesRaw));
+  const body = {
+    name: $("nameInput").value.trim() || "未命名",
+    species: lastResult.species || "未知",
+    breed: lastResult.breed || "未知",
+    body_condition: lastResult.body_condition || "",
+    coat_condition: lastResult.coat_condition || "",
+    health_notes: notesStr,
+    confidence: lastResult.confidence || 0,
+    image_data_url: null,
+    mode: lastResult._mode || lastResult.mode || "vlm"
+  };
+  // 保存前用缩略图替代原图，规避字段长度上限
+  const srcFile = $("fileInput").files[0];
+  if (srcFile && srcFile.type.startsWith("image/")) {
+    try { body.image_data_url = await downscaleImage(srcFile, 700); }
+    catch (e) { body.image_data_url = lastResult.image_data_url || null; }
+  } else {
+    body.image_data_url = lastResult.image_data_url || null;
+  }
+  try {
+    const res = await fetch("/api/pets", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+    const saved = await res.json();
+    toast("已保存档案 #" + saved.id);
+    await loadList();
+  } catch (e) { toast("保存失败：" + e.message); }
+});
+$("reScanBtn").addEventListener("click", () => {
+  $("resultCard").style.display = "none";
+  lastResult = null;
+  $("goBtn").click();
+});
+async function loadList() {
+  try {
+    const res = await fetch("/api/pets");
+    const rows = await res.json();
+    const tbody = document.querySelector("#petTable tbody");
+    if (!rows.length) {
+      document.getElementById("petTable").style.display = "none";
+      document.getElementById("emptyState").style.display = "block";
+      return;
+    }
+    document.getElementById("petTable").style.display = "";
+    document.getElementById("emptyState").style.display = "none";
+    tbody.innerHTML = rows.map(p => {
+      const modeLabel = (p.mode === "vlm") ? "AI" : "降级";
+      const time = (p.created_at || "").replace("T"," ").substring(0,19);
+      return '<tr><td>'+p.id+'</td><td><a href="#" onclick="showDetail('+p.id+');return false;" style="color:var(--accent);font-weight:600;">'+esc(p.name)+'</a></td><td>'+esc(p.species||"")+'/'+esc(p.breed||"")+'</td><td>'+esc(p.body_condition||"——")+'</td><td>'+modeLabel+'</td><td>'+time+'</td><td class="td-actions"><button class="btn btn-sm btn-outline" onclick="showDetail('+p.id+')">详情</button> <button class="btn btn-sm btn-danger" onclick="deletePet('+p.id+')">删除</button></td></tr>';
+    }).join("");
+  } catch (e) { console.error("加载列表失败", e); }
+}
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+async function deletePet(id) {
+  if (!confirm("确定删除档案 #" + id + "？此操作不可恢复。")) return;
+  try {
+    const res = await fetch("/api/pets/" + id, { method:"DELETE" });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+    toast("已删除档案 #" + id);
+    closeModal();
+    await loadList();
+  } catch (e) { toast("删除失败：" + e.message); }
+}
+async function showDetail(id) {
+  try {
+    const res = await fetch("/api/pets/" + id);
+    if (!res.ok) { toast("档案不存在"); return; }
+    const p = await res.json();
+    $("modalTitle").textContent = p.name + " - 健康档案 #" + p.id;
+    if (p.image_data_url) { $("modalImg").src = p.image_data_url; $("modalImg").style.display = "block"; }
+    else { $("modalImg").style.display = "none"; }
+    const conf = Math.round((p.confidence||0)*100);
+    $("modalBody").innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;font-size:14px;"><div><strong>物种：</strong>'+esc(p.species||"未知")+'</div><div><strong>品种：</strong>'+esc(p.breed||"未知")+'</div><div><strong>体型判断：</strong>'+esc(p.body_condition||"——")+'</div><div><strong>毛发状态：</strong>'+esc(p.coat_condition||"——")+'</div><div><strong>置信度：</strong>'+conf+'%</div><div><strong>识别模式：</strong>'+(p.mode==="vlm"?"AI 识别":"本地降级")+'</div><div style="grid-column:1/-1;"><strong>健康建议：</strong>'+esc(p.health_notes||"——")+'</div><div style="grid-column:1/-1;color:var(--muted);font-size:12px;">建档时间：'+(p.created_at||"").replace("T"," ")+'</div></div><div style="margin-top:16px;display:flex;gap:8px;"><button class="btn btn-sm btn-danger" onclick="deletePet('+p.id+')">删除此档案</button><button class="btn btn-sm btn-outline" onclick="closeModal()">关闭</button></div>';
+    $("modalOverlay").classList.add("show");
+  } catch (e) { toast("加载详情失败：" + e.message); }
+}
+function closeModal() { $("modalOverlay").classList.remove("show"); }
+$("modalOverlay").addEventListener("click", e => { if (e.target === $("modalOverlay")) closeModal(); });
+$("exportBtn").addEventListener("click", async () => {
+  try {
+    const res = await fetch("/api/pets/export/json");
+    const data = await res.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "petsight_export_" + new Date().toISOString().slice(0,10) + ".json";
+    a.click();
+    toast("已导出 " + data.length + " 条档案");
+  } catch (e) { toast("导出失败：" + e.message); }
+});
+let toastTimer;
+function toast(msg) {
+  clearTimeout(toastTimer);
+  $("toast").textContent = msg;
+  $("toast").classList.add("show");
+  toastTimer = setTimeout(() => $("toast").classList.remove("show"), 2200);
+}
+loadList();
+</script>
+</body>
+</html>
