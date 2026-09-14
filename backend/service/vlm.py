@@ -6,8 +6,11 @@ import re
 import urllib.request
 import urllib.error
 from typing import Dict, Optional, List
+import logging
 
 from config import VLM_API_KEY, VLM_BASE_URL, VLM_MODEL, VLM_TEMPERATURE
+
+logger = logging.getLogger("petsight.vlm")
 
 # 期望模型输出的 JSON 结构
 SCHEMA_PROMPT = (
@@ -24,10 +27,7 @@ SCHEMA_PROMPT = (
 
 # 备用视觉模型列表（主模型失败时依次尝试）
 FALLBACK_MODELS = [
-    "Qwen/Qwen3-VL-8B-Instruct",
-    "Qwen/Qwen3-VL-32B-Instruct",
-    "Qwen/Qwen2.5-VL-72B-Instruct",
-    "Pro/Qwen/Qwen2-VL-7B-Instruct",
+    "glm-4v",
 ]
 
 
@@ -124,16 +124,16 @@ def _call_vlm_with_fallback(image_data_url: str) -> dict:
             extracted = _call_one_model(image_data_url, model)
             if extracted:
                 return extracted
-            last_err = f"模型 {model} 未返回合法 JSON"
+            last_err = f"模型 {model} 未返回合法 JSON"; logger.warning(last_err); logger.warning(last_err)
         except urllib.error.HTTPError as e:
             err_body = ""
             try:
                 err_body = e.read().decode("utf-8", "ignore")[:200]
             except Exception:
                 pass
-            last_err = f"HTTP {e.code} ({model}): {err_body}"
+            last_err = f"HTTP {e.code} ({model}): {err_body}"; logger.warning(last_err); logger.warning(last_err)
         except Exception as e:
-            last_err = f"{type(e).__name__} ({model}): {e}"
+            last_err = f"{type(e).__name__} ({model}): {e}"; logger.warning(last_err); logger.warning(last_err)
     return {"_error": last_err}
 
 
@@ -153,6 +153,7 @@ def _local_fallback() -> dict:
 def classify_pet_image(image_base64: str, mime: str = "image/jpeg") -> dict:
     """识别宠物图片，返回结构化档案字段。始终返回可用的 dict。"""
     image_data_url = f"data:{mime};base64,{image_base64}"
+    logger.warning(f"VLM请求: base64长度={len(image_base64)}, mime={mime}")
     if not VLM_API_KEY:
         return _local_fallback()
     payload = _call_vlm_with_fallback(image_data_url)

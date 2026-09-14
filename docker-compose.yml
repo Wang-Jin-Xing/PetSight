@@ -1,10 +1,14 @@
-services:
+﻿services:
   petsight:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        PYTHON_BASE: ${PYTHON_BASE:-python:3.11-slim}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     image: petsight:latest
     container_name: petsight
     ports:
-      - "8000:8000"
+      - "8001:8000"
     env_file:
       - .env
     volumes:
